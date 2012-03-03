@@ -8,7 +8,7 @@
 > import System.IO
 > import Data.ByteString 
 
-> data LazyStream a = EOF | Cons { val :: a , nextSt :: LazyStream a }
+> data LazyStream a = EOF | Cons { val :: a , nextSt :: LazyStream a } deriving (Show)
 
 -- We need structure to control switching between streams
 -- Let's try implementing interleave of N streams . Order of streams is defined by list 
@@ -18,7 +18,7 @@
 
 > interleave [] = EOF
 > interleave (x:[]) = x
-> interleave (x:xs) = undefined
+> interleave (x:xs) = _interleave x xs []
 
 
    Since algorithm is round robin there should beginning and the
@@ -26,6 +26,7 @@
    I can keep 'reference' to the end . So after I fetch n entries . Push the remainder to the end , unless it's EOF
    Another option  is to implement sort of double buffer lists , where one list is consumed and other is generated and when consumed is empty , buffers are switched
 
+This is a piece of crap , since I need to implement queue here , but this is not trivial
 
 > _interleave :: (?step :: Int) => (LazyStream a) -> [LazyStream a] 
 >                -> [LazyStream a]  -> LazyStream a
@@ -53,7 +54,7 @@ Remainder of original stream is inserted to nextBuf
   
 Common case                 
 
-> _interleave stream@(Cons val nextStep) currBuf@(x:xs) nextBuf@(y:ys) = 
+> _interleave stream@(Cons val nextStep) currBuf@(x:xs) nextBuf = 
 >     result  where
   
 Convert n entries and then append continuation 
@@ -74,10 +75,14 @@ Also , at the end the last 'next' position will be used for continuation + addin
 Passing next as an explitcit argument allowed using skip as tail recursion and allowed accessing result of 
 last recursion step
 
->   _skip :: Int -> (LazyStream a {-current pos-},LazyStream a {-next pos-}) -> (LazyStream a,LazyStream a)    
->   _skip _ (EOF,_) = (EOF,EOF)
->   _skip n (a@(Cons _val _),b) | n <= 0 = (a,b)
->             | otherwise = _skip (n-1) (b, nextSt b)
+Skip is like split in lists
+
+>   _skip :: Int -> (LazyStream a)  -> (LazyStream a,LazyStream a)    
+>   _skip n EOF = EOF
+>   _skip n stream = __skip n stream EOF where
+>     __skip n stream acc | n <= 0 = (acc,stream) 
+>     __skip n EOF EOF             = (EOF,EOF)
+>     __skip n stream EOF = Cons (val stream)
 
 
 >   _fetch num EOF cont = _defaultCont EOF cont 
@@ -92,4 +97,28 @@ Here we are implementing general case of _interleave
 
 >   (afterFetch,origCont) = _fetch ?step stream x 
 >   result = _interleave afterFetch xs (nextBuf ++ [origCont]) 
+
+------------------------------------------------------------------
+--   Tests
+------------------------------------------------------------------
+
+Convert list to stream
+
+> l2str :: [a] -> LazyStream a
+> l2str [] = EOF
+> l2str (x:xs) = Cons x (l2str xs)
+
+
+> str2l :: LazyStream a -> [a]
+> str2l EOF = []
+> str2l (Cons a b) = a : (str2l b)
+
+> str1 = l2str [1..10]
+> str2 = l2str [20..30]
+> str3 = l2str [40..50]
+
+> test1 = let ?step = 3 in interleave
+
+
+
 
